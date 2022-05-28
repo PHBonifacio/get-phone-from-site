@@ -1,10 +1,15 @@
+from ast import Return
 from os import link
+import re
+import threading
+
 import requests
 from bs4 import BeautifulSoup
 
 DOMAIN = 'https://django-anuncios.solyd.com.br'
 URL = "https://django-anuncios.solyd.com.br/automoveis/"
 
+PHONES_LIST = []
 def GetURL(url):
     try:
         req = requests.get(url)
@@ -44,14 +49,52 @@ def GetAdDescription(soap):
             if div.find('h3'):
                 p = div.find('p')
                 return p.text.replace('\n', '')
-        
-url = GetURL(URL)
-soup = ParseHTML(url)
-links = GetLinks(soup)
 
-for link in links:
-    url = GetURL(DOMAIN + link)
-    soap = ParseHTML(url)
-    ad_name = GetAdName(soap)
-    ad_desc = GetAdDescription(soap)
-    print("{}\n\t{}\n---------------------------------------------".format(ad_name, ad_desc))
+def GetPhones(ad_description):
+    if not ad_description:
+        return
+
+    phone = re.findall(r"\(?([1-9]{2})\)?[ \.\-]{0,2}(9\d{4})[ \.\-]?(\d{4})", ad_description)
+    return phone
+
+def ProcessSite(links_list):
+    while True:
+        try:
+            link = links_list.pop(0)
+        except:
+            print("Error, finishing")
+            return
+        
+        url = GetURL(DOMAIN + link)
+        soap = ParseHTML(url)
+        phones = GetPhones(GetAdDescription(soap))
+        
+        if phones:
+            for phone in phones:
+                PHONES_LIST.append(phone)
+                print(phone)
+
+def SaveList2File(filename, list):
+    file = open(filename, "w+")
+    for phone in list:
+        text = "{} {}-{}\n".format(phone[0], phone[1], phone[2])
+        file.write(text)    
+    file.close() 
+
+if __name__ == "__main__":    
+    url = GetURL(URL)
+    soup = ParseHTML(url)
+    links = GetLinks(soup)
+    
+    threads = []
+    for i in range (3):
+        thread = threading.Thread(target=ProcessSite, args=(links,))
+        thread.start()
+        threads.append(thread)
+
+    for thread in threads:
+        thread.join()
+
+    SaveList2File("phones.txt", PHONES_LIST)
+
+    
